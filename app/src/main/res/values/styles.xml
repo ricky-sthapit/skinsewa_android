@@ -1,0 +1,14 @@
+<resources>
+    <style name="Theme.SkinSewa" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">#F2FAFC</item>
+        <item name="android:navigationBarColor">#F2FAFC</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+    <style name="Theme.SkinSewa.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#F3F9FB</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/skinsewa_logo_screen</item>
+        <item name="postSplashScreenTheme">@style/Theme.SkinSewa</item>
+    </style>
+</resources>
