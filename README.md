@@ -1,6 +1,6 @@
 # SkinSewa Android
 
-Native Android client for the SkinSewa Laravel API, built with Kotlin and Jetpack Compose. The current app includes a branded splash screen, API-backed sign-in, forgot-password requests, a signed-in account page, and a persisted light/dark appearance setting. Light mode is the default and does not follow the device theme.
+Native Android client for the SkinSewa Laravel API, built with Kotlin and Jetpack Compose. The app includes a branded splash screen, API-backed login and invitation OTP registration, forgot-password requests, a signed-in dashboard, encrypted token persistence, and a saved light/dark appearance setting. Light mode is the default and does not follow the device theme.
 
 ## Toolchain
 
@@ -16,7 +16,7 @@ Open this folder in Android Studio, or build the emulator debug APK with:
 ./gradlew :app:assembleDebug
 ```
 
-The debug build defaults to `http://10.0.2.2:8000/api/v1/`, the Android emulator's host loopback address. Start the API locally with `php artisan serve --host=0.0.0.0` from `telederm-api`. Debug cleartext HTTP is enabled for this build variant only. The app rejects non-HTTPS API URLs except emulator loopback.
+The debug and release builds default to the deployed API at `https://api.ricky.com.np/api/v1/`. To point a debug build at a local API instead, pass `-PTELEDERM_API_BASE_URL=http://10.0.2.2:8000/api/v1/`; this is the Android emulator's host loopback address. Start the local API with `php artisan serve --host=0.0.0.0` from `telederm-api`. Cleartext HTTP is enabled only for the debug build. The app rejects non-HTTPS API URLs except emulator loopback.
 
 Configure a deployed API base URL for release builds with:
 
@@ -29,9 +29,10 @@ The URL must include the `api/v1/` prefix and end with a slash. Never put creden
 ## Current behavior
 
 - The splash screen uses the SkinSewa mark, then routes to the signed-in account page if the saved token is still accepted, or to sign-in otherwise.
-- Login and forgot-password requests use the Laravel `/api/v1/auth` endpoints.
+- Login and forgot-password requests use the deployed Laravel `/api/v1/auth` endpoints. Registration submits the invited email, six-digit OTP, account details, and password to `/api/v1/auth/register`; the server assigns the invitation's role and returns a bearer token.
 - Access tokens are encrypted with AES-GCM using an Android Keystore key.
-- The account page displays the authenticated user's role and available profile details. Settings lets the user choose Light or Dark; the setting is saved across launches.
+- The dashboard displays the authenticated user's role and available profile details. Settings lets the user choose Light or Dark; the setting is saved across launches.
+- The dashboard navigation drawer shows shared workspace links and expands administrator tools only for `ADMIN` users. Resources are listed from the authenticated API, paginated, and opened in the device's PDF viewer. Administrators can add resources, edit names or replace PDFs, and delete resources from the resource library.
 - The dark palette uses Material 3 surface and on-surface roles with light blue and teal accents. It avoids pure black backgrounds to preserve layered surfaces and readable content.
 
-Additional case, chat, resource, and administrator flows can be added against backend routes as those modules are implemented.
+Case and chat flows can be added against their backend routes as those modules are implemented.

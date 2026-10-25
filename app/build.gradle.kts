@@ -20,7 +20,7 @@ android {
         buildConfigField(
             "String",
             "API_BASE_URL",
-            "\"${apiBaseUrl.orElse("http://10.0.2.2:8000/api/v1/").get()}\"",
+            "\"${apiBaseUrl.orElse("https://api.ricky.com.np/api/v1/").get()}\"",
         )
     }
 
@@ -36,7 +36,7 @@ android {
             buildConfigField(
                 "String",
                 "API_BASE_URL",
-                "\"${apiBaseUrl.orElse("https://api.example.invalid/api/v1/").get()}\"",
+                "\"${apiBaseUrl.orElse("https://api.ricky.com.np/api/v1/").get()}\"",
             )
         }
     }

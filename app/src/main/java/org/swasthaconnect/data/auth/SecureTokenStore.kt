@@ -11,13 +11,13 @@ import javax.crypto.spec.GCMParameterSpec
 
 /** Encrypts the Sanctum token with a non-exportable Android Keystore key. */
 class SecureTokenStore(private val preferences: android.content.SharedPreferences) {
-    fun save(token: String) {
+    fun save(token: String): Boolean {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key())
-        preferences.edit()
+        return preferences.edit()
             .putString(TOKEN, Base64.encodeToString(cipher.doFinal(token.toByteArray()), Base64.NO_WRAP))
             .putString(IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-            .apply()
+            .commit()
     }
 
     fun read(): String? = runCatching {
@@ -29,7 +29,7 @@ class SecureTokenStore(private val preferences: android.content.SharedPreference
     }.getOrNull()
 
     fun clear() {
-        preferences.edit().remove(TOKEN).remove(IV).apply()
+        preferences.edit().remove(TOKEN).remove(IV).commit()
     }
 
     private fun key(): SecretKey {
