@@ -32,7 +32,7 @@ The URL must include the `api/v1/` prefix and end with a slash. Never put creden
 - Login and forgot-password requests use the deployed Laravel `/api/v1/auth` endpoints. Registration submits the invited email, six-digit OTP, account details, and password to `/api/v1/auth/register`; the server assigns the invitation's role and returns a bearer token.
 - Access tokens are encrypted with AES-GCM using an Android Keystore key.
 - The dashboard displays the authenticated user's role and available profile details. Settings lets the user choose Light or Dark; the setting is saved across launches.
-- The dashboard navigation drawer shows shared workspace links and expands administrator tools only for `ADMIN` users. Resources are listed from the authenticated API, paginated, and opened in the device's PDF viewer. Administrators can add resources, edit names or replace PDFs, and delete resources from the resource library.
+- The dashboard shows live user, case, resource, and completed-case totals. Administrator metrics are system-wide; care-team case counts follow the signed-in user's API access. Its navigation drawer shows shared workspace links and expands administrator tools only for `ADMIN` users. Resources are listed from the authenticated API, paginated, and opened in the device's PDF viewer. Administrators can add resources, edit names or replace PDFs, and delete resources from the resource library.
 - The dark palette uses Material 3 surface and on-surface roles with light blue and teal accents. It avoids pure black backgrounds to preserve layered surfaces and readable content.
 
 Case and chat flows can be added against their backend routes as those modules are implemented.

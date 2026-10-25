@@ -1,6 +1,7 @@
 package org.swasthaconnect.data.auth
 
 import com.google.gson.annotations.SerializedName
+import com.google.gson.JsonObject
 import okhttp3.OkHttpClient
 import okhttp3.Interceptor
 import okhttp3.MultipartBody
@@ -60,6 +61,16 @@ interface AuthApi {
     @DELETE("admin/resources/{id}")
     suspend fun deleteResource(@Path("id") id: Long): Response<MessageResponse>
 
+    @GET("admin/dashboard")
+    suspend fun adminDashboard(): Response<AdminDashboardResponse>
+
+    @GET("cases")
+    suspend fun cases(
+        @Query("status") status: String? = null,
+        @Query("page") page: Int = 1,
+        @Query("per_page") perPage: Int = 5,
+    ): Response<CaseListResponse>
+
     companion object {
         fun create(baseUrl: String, token: SecureTokenStore): AuthApi {
             val client = OkHttpClient.Builder().addInterceptor(Interceptor { chain ->
@@ -112,6 +123,16 @@ data class EducationalResource(
     @SerializedName("file_size_bytes") val fileSizeBytes: Long = 0,
     @SerializedName("created_at") val createdAt: String? = null,
 )
+data class AdminDashboardResponse(val data: AdminDashboardData? = null)
+data class AdminDashboardData(
+    val users: Int = 0,
+    val cases: Int = 0,
+    val resources: Int = 0,
+    @SerializedName("cases_by_status") val casesByStatus: List<CaseStatusCount> = emptyList(),
+)
+data class CaseStatusCount(val status: String, val total: Int)
+data class CaseListResponse(val data: List<JsonObject> = emptyList(), val meta: CaseListMeta? = null)
+data class CaseListMeta(val total: Int = 0)
 data class User(
     val id: Long,
     @SerializedName("first_name") val firstName: String,
@@ -119,7 +140,27 @@ data class User(
     val name: String,
     val email: String,
     val role: String,
+    @SerializedName("user_type") val userType: String? = null,
+    @SerializedName("is_admin") val isAdmin: Boolean = false,
+    val roles: List<String>? = null,
+    @SerializedName("role_label") val roleLabel: String? = null,
     val phone: String? = null,
     @SerializedName("facility_name") val facilityName: String? = null,
     val specialty: String? = null,
-)
+) {
+    val hasAdminAccess: Boolean
+        get() = isAdmin || role == "ADMIN" || roles.orEmpty().contains("ADMIN")
+
+    val clinicalRole: String?
+        get() = userType?.takeIf { it == "MEDICAL_OFFICER" || it == "DERMATOLOGIST" }
+            ?: role.takeIf { it == "MEDICAL_OFFICER" || it == "DERMATOLOGIST" }
+
+    val displayRole: String
+        get() = roleLabel ?: buildList {
+            if (hasAdminAccess) add("Administrator")
+            when (clinicalRole) {
+                "MEDICAL_OFFICER" -> add("Medical Officer")
+                "DERMATOLOGIST" -> add("Dermatologist")
+            }
+        }.joinToString(" · ").ifBlank { "Care team" }
+}

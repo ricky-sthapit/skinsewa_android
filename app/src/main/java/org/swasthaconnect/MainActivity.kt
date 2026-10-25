@@ -148,6 +148,9 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
     var resourcesMessage by remember { mutableStateOf<String?>(null) }
     var resourcePage by remember { mutableStateOf(1) }
     var resourceLastPage by remember { mutableStateOf(1) }
+    var dashboardMetrics by remember { mutableStateOf<DashboardMetrics?>(null) }
+    var dashboardLoading by remember { mutableStateOf(false) }
+    var dashboardError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -172,6 +175,53 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
                 resourcesError = "Something went wrong while loading resources."
             } finally {
                 resourcesLoading = false
+            }
+        }
+    }
+
+    fun loadDashboardMetrics(account: User) {
+        scope.launch {
+            dashboardLoading = true
+            dashboardError = null
+            try {
+                if (account.hasAdminAccess) {
+                    val response = app.authApi.adminDashboard()
+                    if (!response.isSuccessful) {
+                        throw IOException(response.errorBody()?.string()?.let(::serverMessage) ?: "Couldn't load dashboard totals.")
+                    }
+                    val data = response.body()?.data ?: throw IOException("The dashboard response was empty.")
+                    dashboardMetrics = DashboardMetrics(
+                        totalUsers = data.users,
+                        totalCases = data.cases,
+                        totalResources = data.resources,
+                        completedCases = data.casesByStatus.firstOrNull { it.status.equals("completed", ignoreCase = true) }?.total ?: 0,
+                    )
+                } else {
+                    val caseResponse = app.authApi.cases()
+                    if (!caseResponse.isSuccessful) {
+                        throw IOException(caseResponse.errorBody()?.string()?.let(::serverMessage) ?: "Couldn't load your case totals.")
+                    }
+                    val completedResponse = app.authApi.cases(status = "completed")
+                    if (!completedResponse.isSuccessful) {
+                        throw IOException(completedResponse.errorBody()?.string()?.let(::serverMessage) ?: "Couldn't load completed cases.")
+                    }
+                    val resourceResponse = app.authApi.resources(perPage = 5)
+                    if (!resourceResponse.isSuccessful) {
+                        throw IOException(resourceResponse.errorBody()?.string()?.let(::serverMessage) ?: "Couldn't load resource totals.")
+                    }
+                    dashboardMetrics = DashboardMetrics(
+                        totalUsers = null,
+                        totalCases = caseResponse.body()?.meta?.total ?: 0,
+                        totalResources = resourceResponse.body()?.meta?.total ?: 0,
+                        completedCases = completedResponse.body()?.meta?.total ?: 0,
+                    )
+                }
+            } catch (error: IOException) {
+                dashboardError = error.message ?: "Couldn't load dashboard totals."
+            } catch (_: Exception) {
+                dashboardError = "Couldn't load dashboard totals. Check your connection and try again."
+            } finally {
+                dashboardLoading = false
             }
         }
     }
@@ -304,8 +354,12 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
             )
             Page.HOME -> HomePage(
                 user = user,
+                metrics = dashboardMetrics,
+                metricsLoading = dashboardLoading,
+                metricsError = dashboardError,
                 onSettings = { page = Page.SETTINGS.name },
                 onNavigate = { destination -> page = destination.name },
+                onRefreshMetrics = { user?.let(::loadDashboardMetrics) },
                 onSignOut = {
                     scope.launch {
                         runCatching { app.authApi.logout() }
@@ -316,7 +370,7 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
                 },
             )
             Page.RESOURCES, Page.RESOURCE_ADMIN -> ResourcesScreen(
-                admin = Page.valueOf(page) == Page.RESOURCE_ADMIN && user?.role == "ADMIN",
+                admin = Page.valueOf(page) == Page.RESOURCE_ADMIN && user?.hasAdminAccess == true,
                 resources = resources,
                 loading = resourcesLoading,
                 error = resourcesError,
@@ -429,7 +483,18 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
     LaunchedEffect(page) {
         if (page == Page.RESOURCES.name || page == Page.RESOURCE_ADMIN.name) loadResources()
     }
+
+    LaunchedEffect(page, user?.id) {
+        if (page == Page.HOME.name) user?.let(::loadDashboardMetrics)
+    }
 }
+
+private data class DashboardMetrics(
+    val totalUsers: Int?,
+    val totalCases: Int,
+    val totalResources: Int,
+    val completedCases: Int,
+)
 
 private suspend fun activateSession(app: SkinSewaApplication, accessToken: String): User? {
     return try {
@@ -738,13 +803,17 @@ private fun ForgotPasswordPage(busy: Boolean, message: String?, onBack: () -> Un
 @Composable
 private fun HomePage(
     user: User?,
+    metrics: DashboardMetrics?,
+    metricsLoading: Boolean,
+    metricsError: String?,
     onSettings: () -> Unit,
     onNavigate: (Page) -> Unit,
+    onRefreshMetrics: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     val drawerState = rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val isAdmin = user?.role == "ADMIN"
+    val isAdmin = user?.hasAdminAccess == true
     var adminExpanded by rememberSaveable { mutableStateOf(false) }
 
     ModalNavigationDrawer(
@@ -755,7 +824,7 @@ private fun HomePage(
                     BrandHeader(compact = true)
                     Spacer(Modifier.height(16.dp))
                     Text(user?.name ?: "SkinSewa user", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(user?.role?.replace('_', ' ')?.lowercase()?.replaceFirstChar(Char::uppercase) ?: "Care team", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(user?.displayRole ?: "Care team", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 NavigationDrawerItem(
@@ -822,30 +891,70 @@ private fun HomePage(
                     Text("Dashboard", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                     Text("Welcome back, ${user?.firstName ?: "care team"}.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                    DashboardMetricGrid(
+                        metrics = metrics,
+                        isAdmin = user?.hasAdminAccess == true,
+                        loading = metricsLoading,
+                    )
+                    metricsError?.let {
+                        InlineMessage(it, isError = true)
+                        TextButton(onClick = onRefreshMetrics, modifier = Modifier.align(Alignment.End)) { Text("Retry") }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
                     Text(user?.name ?: "SkinSewa user", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                    InfoLine("Account type", user?.role?.replace('_', ' ')?.lowercase()?.replaceFirstChar(Char::uppercase) ?: "Care team")
+                    InfoLine("Account type", user?.displayRole ?: "Care team")
                     InfoLine("Email", user?.email.orEmpty())
                     user?.facilityName?.takeIf(String::isNotBlank)?.let { InfoLine("Facility", it) }
                     user?.specialty?.takeIf(String::isNotBlank)?.let { InfoLine("Specialty", it) }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton(
-                            onClick = { onNavigate(Page.RESOURCES) },
-                            modifier = Modifier.weight(1f),
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardMetricGrid(
+    metrics: DashboardMetrics?,
+    isAdmin: Boolean,
+    loading: Boolean,
+) {
+    val values = buildList {
+        if (isAdmin) add("Total users" to metrics?.totalUsers?.toString())
+        add((if (isAdmin) "Total cases" else "Your cases") to metrics?.totalCases?.toString())
+        add("Resources" to metrics?.totalResources?.toString())
+        add("Completed cases" to metrics?.completedCases?.toString())
+    }
+    val tileColors = listOf(
+        MaterialTheme.colorScheme.primaryContainer,
+        MaterialTheme.colorScheme.secondaryContainer,
+        MaterialTheme.colorScheme.tertiaryContainer,
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        values.chunked(2).forEachIndexed { rowIndex, rowValues ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                rowValues.forEachIndexed { columnIndex, (label, value) ->
+                    val colorIndex = (rowIndex * 2 + columnIndex) % tileColors.size
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = tileColors[colorIndex]),
+                    ) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
-                            Icon(Icons.Outlined.FolderOpen, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Resources", maxLines = 1, softWrap = false)
-                        }
-                        OutlinedButton(
-                            onClick = onSettings,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Icon(Icons.Outlined.Settings, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Settings", maxLines = 1, softWrap = false)
+                            Text(
+                                text = value ?: if (loading) "…" else "—",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
+                if (rowValues.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }
