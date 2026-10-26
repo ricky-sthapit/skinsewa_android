@@ -464,7 +464,10 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
                     }
                 },
             )
-            Page.CASES, Page.USERS, Page.INVITATIONS -> ComingSoonPage(
+            Page.CASES -> user?.let { account ->
+                CasesScreen(api = app.authApi, user = account, onBack = { page = Page.HOME.name })
+            }
+            Page.USERS, Page.INVITATIONS -> ComingSoonPage(
                 title = when (Page.valueOf(page)) {
                     Page.CASES -> "Cases"
                     Page.USERS -> "Users"

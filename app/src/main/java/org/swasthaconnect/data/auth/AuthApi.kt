@@ -1,7 +1,6 @@
 package org.swasthaconnect.data.auth
 
 import com.google.gson.annotations.SerializedName
-import com.google.gson.JsonObject
 import okhttp3.OkHttpClient
 import okhttp3.Interceptor
 import okhttp3.MultipartBody
@@ -17,6 +16,7 @@ import retrofit2.http.Multipart
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.POST
+import retrofit2.http.PartMap
 import retrofit2.http.Query
 import retrofit2.http.Streaming
 
@@ -66,10 +66,51 @@ interface AuthApi {
 
     @GET("cases")
     suspend fun cases(
+        @Query("q") query: String? = null,
         @Query("status") status: String? = null,
         @Query("page") page: Int = 1,
         @Query("per_page") perPage: Int = 5,
     ): Response<CaseListResponse>
+
+    @GET("cases/{id}")
+    suspend fun caseDetails(@Path("id") id: Long): Response<CaseDetailResponse>
+
+    @GET("case-dermatologists")
+    suspend fun caseDermatologists(): Response<CaseDermatologistsResponse>
+
+    @GET("places/provinces")
+    suspend fun provinces(): Response<PlacesResponse>
+
+    @GET("places/{id}/children")
+    suspend fun placeChildren(@Path("id") id: Long): Response<PlacesResponse>
+
+    @GET("patients/lookup")
+    suspend fun lookupPatient(@Query("patient_code") patientCode: String): Response<PatientLookupResponse>
+
+    @Multipart
+    @POST("cases")
+    suspend fun createCase(
+        @PartMap fields: Map<String, @JvmSuppressWildcards RequestBody>,
+        @Part photos: List<MultipartBody.Part>,
+    ): Response<CaseMutationResponse>
+
+    @GET("cases/{id}/messages")
+    suspend fun caseMessages(@Path("id") id: Long, @Query("after_id") afterId: Long = 0): Response<CaseMessagesResponse>
+
+    @Multipart
+    @POST("cases/{id}/messages")
+    suspend fun sendCaseMessage(
+        @Path("id") id: Long,
+        @PartMap fields: Map<String, @JvmSuppressWildcards RequestBody>,
+        @Part photos: List<MultipartBody.Part>,
+    ): Response<CaseMessageMutationResponse>
+
+    @POST("cases/{id}/treatments")
+    suspend fun prescribeCase(@Path("id") id: Long, @Body request: TreatmentRequest): Response<CaseMutationResponse>
+
+    @Streaming
+    @GET("cases/{caseId}/photos/{photoId}")
+    suspend fun casePhoto(@Path("caseId") caseId: Long, @Path("photoId") photoId: Long): Response<ResponseBody>
 
     companion object {
         fun create(baseUrl: String, token: SecureTokenStore): AuthApi {
@@ -131,8 +172,112 @@ data class AdminDashboardData(
     @SerializedName("cases_by_status") val casesByStatus: List<CaseStatusCount> = emptyList(),
 )
 data class CaseStatusCount(val status: String, val total: Int)
-data class CaseListResponse(val data: List<JsonObject> = emptyList(), val meta: CaseListMeta? = null)
-data class CaseListMeta(val total: Int = 0)
+data class CaseListResponse(val data: List<CaseSummary> = emptyList(), val meta: CaseListMeta? = null)
+data class CaseListMeta(
+    val total: Int = 0,
+    @SerializedName("current_page") val currentPage: Int = 1,
+    @SerializedName("last_page") val lastPage: Int = 1,
+    @SerializedName("available_statuses") val availableStatuses: List<String> = emptyList(),
+)
+data class CaseDetailResponse(val data: CaseDetail? = null, val message: String? = null)
+data class CaseMutationResponse(val data: CaseSummary? = null, val message: String? = null)
+data class CaseMessagesResponse(val data: List<CaseMessage> = emptyList(), val meta: CaseListMeta? = null)
+data class CaseMessageMutationResponse(val data: CaseMessage? = null, val message: String? = null)
+data class CaseSummary(
+    val id: Long,
+    @SerializedName("case_number") val caseNumber: Long? = null,
+    @SerializedName("patient_id") val patientId: Long? = null,
+    @SerializedName("follow_up_of") val followUpOf: Long? = null,
+    val status: String? = null,
+    val priority: String? = null,
+    val symptoms: String? = null,
+    val finding: String? = null,
+    val history: String? = null,
+    val phc: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("closed_at") val closedAt: String? = null,
+    val patient: CasePatient? = null,
+    @SerializedName("assigned_doctor") val assignedDoctor: CaseUser? = null,
+    val creator: CaseUser? = null,
+    @SerializedName("photo_count") val photoCount: Int? = null,
+    val treatments: List<CaseTreatment> = emptyList(),
+    val photos: List<CasePhoto> = emptyList(),
+)
+data class CasePatient(
+    val id: Long,
+    @SerializedName("patient_code") val patientCode: String? = null,
+    val name: String? = null,
+    val age: Int? = null,
+    val gender: String? = null,
+    val phc: String? = null,
+    val province: String? = null,
+    val district: String? = null,
+    val municipality: String? = null,
+    val phone: String? = null,
+    val email: String? = null,
+    val weight: String? = null,
+)
+data class CaseUser(
+    val id: Long,
+    val name: String? = null,
+    val role: String? = null,
+    @SerializedName("role_label") val roleLabel: String? = null,
+    @SerializedName("facility_name") val facilityName: String? = null,
+    val specialty: String? = null,
+)
+data class CasePhoto(
+    val id: Long,
+    val filename: String? = null,
+    @SerializedName("mime_type") val mimeType: String? = null,
+    @SerializedName("size_bytes") val sizeBytes: Long? = null,
+    @SerializedName("sort_order") val sortOrder: Int? = null,
+    val source: String? = null,
+    val url: String? = null,
+)
+data class CaseTreatment(
+    val id: Long,
+    val diagnosis: String? = null,
+    val treatment: String? = null,
+    val prevention: String? = null,
+    val referral: String? = null,
+    @SerializedName("follow_up_at") val followUpAt: String? = null,
+    val doctor: CaseUser? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+)
+data class CaseMessage(
+    val id: Long,
+    val detail: String? = null,
+    val author: CaseUser? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+    val photos: List<CasePhoto> = emptyList(),
+)
+data class CasePermissions(
+    @SerializedName("can_chat") val canChat: Boolean = false,
+    @SerializedName("can_prescribe") val canPrescribe: Boolean = false,
+)
+data class CaseDetail(
+    @SerializedName("case") val caseSummary: CaseSummary,
+    val patient: CasePatient? = null,
+    @SerializedName("health_worker") val healthWorker: CaseUser? = null,
+    val dermatologist: CaseUser? = null,
+    val photos: List<CasePhoto> = emptyList(),
+    val messages: List<CaseMessage> = emptyList(),
+    val treatments: List<CaseTreatment> = emptyList(),
+    @SerializedName("previous_cases") val previousCases: List<CaseSummary> = emptyList(),
+    val permissions: CasePermissions? = null,
+)
+data class CaseDermatologistsResponse(val data: List<CaseUser> = emptyList())
+data class PlacesResponse(val data: List<PlaceOption> = emptyList())
+data class PlaceOption(
+    val id: Long,
+    val name: String,
+    @SerializedName("name_ne") val nameNepali: String? = null,
+    val type: String? = null,
+    val parent: Long? = null,
+)
+data class PatientLookupResponse(val data: PatientLookupData? = null, val message: String? = null)
+data class PatientLookupData(val patient: CasePatient? = null, @SerializedName("previous_cases") val previousCases: List<CaseSummary> = emptyList())
+data class TreatmentRequest(val diagnosis: String, val treatment: String, val prevention: String? = null, val referral: String? = null)
 data class User(
     val id: Long,
     @SerializedName("first_name") val firstName: String,
