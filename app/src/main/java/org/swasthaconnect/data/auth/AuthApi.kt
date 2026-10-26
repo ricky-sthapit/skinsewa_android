@@ -64,6 +64,20 @@ interface AuthApi {
     @GET("admin/dashboard")
     suspend fun adminDashboard(): Response<AdminDashboardResponse>
 
+    @GET("admin/invitations")
+    suspend fun invitations(
+        @Query("q") query: String? = null,
+        @Query("status") status: String? = null,
+        @Query("page") page: Int = 1,
+        @Query("per_page") perPage: Int = 25,
+    ): Response<InvitationListResponse>
+
+    @POST("admin/invitations")
+    suspend fun sendInvitation(@Body request: InvitationRequest): Response<InvitationMutationResponse>
+
+    @POST("admin/invitations/{id}/resend")
+    suspend fun resendInvitation(@Path("id") id: Long): Response<InvitationMutationResponse>
+
     @GET("cases")
     suspend fun cases(
         @Query("q") query: String? = null,
@@ -150,6 +164,21 @@ data class AuthData(val user: User? = null, val token: String? = null)
 data class UserResponse(val data: UserData? = null, val message: String? = null)
 data class UserData(val user: User? = null)
 data class MessageResponse(val message: String? = null)
+data class InvitationRequest(
+    val email: String,
+    @SerializedName("user_type") val userType: String,
+    @SerializedName("facility_name") val facilityName: String? = null,
+)
+data class InvitationListResponse(val data: List<Invitation> = emptyList(), val meta: ResourcePage? = null)
+data class InvitationMutationResponse(val data: Invitation? = null, val message: String? = null)
+data class Invitation(
+    val id: Long,
+    val email: String,
+    @SerializedName("user_type") val userType: String,
+    val status: String,
+    @SerializedName("expires_at") val expiresAt: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+)
 data class ResourceListResponse(val data: List<EducationalResource> = emptyList(), val meta: ResourcePage? = null)
 data class ResourcePage(
     @SerializedName("current_page") val currentPage: Int = 1,

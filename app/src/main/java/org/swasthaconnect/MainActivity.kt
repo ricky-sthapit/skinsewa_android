@@ -467,14 +467,12 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
             Page.CASES -> user?.let { account ->
                 CasesScreen(api = app.authApi, user = account, onBack = { page = Page.HOME.name })
             }
-            Page.USERS, Page.INVITATIONS -> ComingSoonPage(
-                title = when (Page.valueOf(page)) {
-                    Page.CASES -> "Cases"
-                    Page.USERS -> "Users"
-                    else -> "Invitations"
-                },
-                onBack = { page = Page.HOME.name },
-            )
+            Page.INVITATIONS -> if (user?.hasAdminAccess == true) {
+                InvitationsScreen(api = app.authApi, onBack = { page = Page.HOME.name })
+            } else {
+                ComingSoonPage(title = "Invitations", onBack = { page = Page.HOME.name })
+            }
+            Page.USERS -> ComingSoonPage(title = "Users", onBack = { page = Page.HOME.name })
             Page.SETTINGS -> SettingsPage(
                 onBack = { page = Page.HOME.name },
                 selected = app.themePreferences.choice.collectAsState(initial = ThemeChoice.LIGHT).value,
