@@ -245,6 +245,19 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
         }
     }
 
+    LaunchedEffect(user?.id) {
+        val signedInUser = user ?: return@LaunchedEffect
+        val expiresAt = app.tokenStore.expiresAtMillis() ?: return@LaunchedEffect
+        val remainingMillis = expiresAt - System.currentTimeMillis()
+        if (remainingMillis > 0) delay(remainingMillis)
+        if (user?.id == signedInUser.id && app.tokenStore.expiresAtMillis()?.let { it <= System.currentTimeMillis() } == true) {
+            app.tokenStore.clear()
+            user = null
+            loginError = "Your session expired after one hour. Sign in again to continue."
+            page = Page.LOGIN.name
+        }
+    }
+
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when (Page.valueOf(page)) {
             Page.SPLASH -> SplashPage()
@@ -263,7 +276,7 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
                                 val payload: AuthResponse? = response.body()
                                 val token = payload?.data?.token
                                 if (token != null && payload?.data?.user != null) {
-                                    user = activateSession(app, token)
+                                    user = activateSession(app, token, payload?.data?.expiresInSeconds ?: 60 * 60L)
                                     if (user != null) {
                                         page = Page.HOME.name
                                     } else {
@@ -300,7 +313,7 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
                                 val payload = response.body()
                                 val token = payload?.data?.token
                                 if (token != null && payload?.data?.user != null) {
-                                    user = activateSession(app, token)
+                                    user = activateSession(app, token, payload?.data?.expiresInSeconds ?: 60 * 60L)
                                     if (user != null) {
                                         page = Page.HOME.name
                                     } else {
@@ -497,10 +510,10 @@ private data class DashboardMetrics(
     val completedCases: Int,
 )
 
-private suspend fun activateSession(app: SkinSewaApplication, accessToken: String): User? {
+private suspend fun activateSession(app: SkinSewaApplication, accessToken: String, expiresInSeconds: Long): User? {
     return try {
         val tokenSaved = withContext(Dispatchers.IO) {
-            app.tokenStore.save(accessToken) && app.tokenStore.read() == accessToken
+            app.tokenStore.save(accessToken, expiresInSeconds) && app.tokenStore.read() == accessToken
         }
         if (!tokenSaved) {
             withContext(Dispatchers.IO) { app.tokenStore.clear() }

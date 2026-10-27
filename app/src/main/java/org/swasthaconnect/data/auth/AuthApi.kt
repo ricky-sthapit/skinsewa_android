@@ -160,7 +160,11 @@ data class RegistrationRequest(
     val specialty: String? = null,
 )
 data class AuthResponse(val data: AuthData? = null, val message: String? = null)
-data class AuthData(val user: User? = null, val token: String? = null)
+data class AuthData(
+    val user: User? = null,
+    val token: String? = null,
+    @SerializedName("expires_in") val expiresInSeconds: Long = 60 * 60L,
+)
 data class UserResponse(val data: UserData? = null, val message: String? = null)
 data class UserData(val user: User? = null)
 data class MessageResponse(val message: String? = null)

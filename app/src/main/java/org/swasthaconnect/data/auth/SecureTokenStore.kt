@@ -11,16 +11,22 @@ import javax.crypto.spec.GCMParameterSpec
 
 /** Encrypts the Sanctum token with a non-exportable Android Keystore key. */
 class SecureTokenStore(private val preferences: android.content.SharedPreferences) {
-    fun save(token: String): Boolean {
+    fun save(token: String, expiresInSeconds: Long = DEFAULT_EXPIRY_SECONDS): Boolean {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key())
         return preferences.edit()
             .putString(TOKEN, Base64.encodeToString(cipher.doFinal(token.toByteArray()), Base64.NO_WRAP))
             .putString(IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+            .putLong(EXPIRES_AT, System.currentTimeMillis() + expiresInSeconds.coerceAtLeast(1) * 1000)
             .commit()
     }
 
     fun read(): String? = runCatching {
+        val expiresAt = preferences.getLong(EXPIRES_AT, 0L)
+        if (expiresAt <= System.currentTimeMillis()) {
+            clear()
+            return null
+        }
         val encrypted = preferences.getString(TOKEN, null) ?: return null
         val iv = preferences.getString(IV, null) ?: return null
         val cipher = Cipher.getInstance(TRANSFORMATION)
@@ -28,8 +34,10 @@ class SecureTokenStore(private val preferences: android.content.SharedPreference
         String(cipher.doFinal(Base64.decode(encrypted, Base64.NO_WRAP)))
     }.getOrNull()
 
+    fun expiresAtMillis(): Long? = preferences.getLong(EXPIRES_AT, 0L).takeIf { it > 0L }
+
     fun clear() {
-        preferences.edit().remove(TOKEN).remove(IV).commit()
+        preferences.edit().remove(TOKEN).remove(IV).remove(EXPIRES_AT).commit()
     }
 
     private fun key(): SecretKey {
@@ -54,5 +62,7 @@ class SecureTokenStore(private val preferences: android.content.SharedPreference
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val TOKEN = "encrypted_bearer_token"
         const val IV = "token_iv"
+        const val EXPIRES_AT = "token_expires_at"
+        const val DEFAULT_EXPIRY_SECONDS = 60 * 60L
     }
 }
