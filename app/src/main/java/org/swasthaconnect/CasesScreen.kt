@@ -108,9 +108,9 @@ import java.io.IOException
 private enum class CaseView { LIST, CREATE, DETAIL }
 
 @Composable
-fun CasesScreen(api: AuthApi, user: User, onBack: () -> Unit) {
-    var view by rememberSaveable { mutableStateOf(CaseView.LIST) }
-    var selectedCaseId by rememberSaveable { mutableStateOf<Long?>(null) }
+fun CasesScreen(api: AuthApi, user: User, onBack: () -> Unit, initialCaseId: Long? = null) {
+    var view by rememberSaveable(initialCaseId) { mutableStateOf(if (initialCaseId == null) CaseView.LIST else CaseView.DETAIL) }
+    var selectedCaseId by rememberSaveable(initialCaseId) { mutableStateOf(initialCaseId) }
     var refreshKey by rememberSaveable { mutableStateOf(0) }
 
     when (view) {
@@ -132,7 +132,7 @@ fun CasesScreen(api: AuthApi, user: User, onBack: () -> Unit) {
                 api = api,
                 caseId = id,
                 refreshKey = refreshKey,
-                onBack = { view = CaseView.LIST },
+                onBack = { if (initialCaseId != null) onBack() else view = CaseView.LIST },
                 onRefresh = { refreshKey++ },
             )
         } ?: run { view = CaseView.LIST }

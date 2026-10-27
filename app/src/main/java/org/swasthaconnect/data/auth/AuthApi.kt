@@ -64,6 +64,18 @@ interface AuthApi {
     @GET("admin/dashboard")
     suspend fun adminDashboard(): Response<AdminDashboardResponse>
 
+    @GET("admin/reports")
+    suspend fun adminCaseReports(
+        @Query("month") month: String,
+        @Query("province_id") provinceId: Long? = null,
+        @Query("district_id") districtId: Long? = null,
+        @Query("municipality_id") municipalityId: Long? = null,
+        @Query("q") query: String? = null,
+        @Query("dermatologist_id") dermatologistId: Long? = null,
+        @Query("page") page: Int = 1,
+        @Query("per_page") perPage: Int = 15,
+    ): Response<AdminCaseReportsResponse>
+
     @GET("admin/invitations")
     suspend fun invitations(
         @Query("q") query: String? = null,
@@ -205,6 +217,50 @@ data class AdminDashboardData(
     @SerializedName("cases_by_status") val casesByStatus: List<CaseStatusCount> = emptyList(),
 )
 data class CaseStatusCount(val status: String, val total: Int)
+data class AdminCaseReportsResponse(val data: AdminCaseReportData? = null, val message: String? = null)
+data class AdminCaseReportData(
+    val month: String,
+    val summary: AdminCaseReportSummary,
+    val locations: List<ReportLocation> = emptyList(),
+    val dermatologists: List<ReportDermatologist> = emptyList(),
+    val cases: ReportCasePage,
+)
+data class AdminCaseReportSummary(
+    @SerializedName("total_cases") val totalCases: Int = 0,
+    @SerializedName("completed_cases") val completedCases: Int = 0,
+    @SerializedName("districts_reported") val districtsReported: Int = 0,
+)
+data class ReportLocation(
+    val id: Long? = null,
+    @SerializedName("province_id") val provinceId: Long? = null,
+    @SerializedName("district_id") val districtId: Long? = null,
+    @SerializedName("municipality_id") val municipalityId: Long? = null,
+    val name: String,
+    val province: String? = null,
+    val district: String? = null,
+    @SerializedName("total_cases") val totalCases: Int = 0,
+)
+data class ReportDermatologist(
+    val id: Long,
+    val name: String,
+    @SerializedName("total_cases") val totalCases: Int = 0,
+): java.io.Serializable
+data class ReportCasePage(val data: List<ReportCase> = emptyList(), val meta: ResourcePage? = null)
+data class ReportCase(
+    val id: Long,
+    @SerializedName("case_number") val caseNumber: Long? = null,
+    val status: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+    val patient: ReportPatient? = null,
+    val dermatologist: ReportDermatologist? = null,
+)
+data class ReportPatient(
+    val name: String? = null,
+    @SerializedName("patient_code") val patientCode: String? = null,
+    val province: String? = null,
+    val district: String? = null,
+    val municipality: String? = null,
+)
 data class CaseListResponse(val data: List<CaseSummary> = emptyList(), val meta: CaseListMeta? = null)
 data class CaseListMeta(
     val total: Int = 0,
@@ -307,7 +363,7 @@ data class PlaceOption(
     @SerializedName("name_ne") val nameNepali: String? = null,
     val type: String? = null,
     val parent: Long? = null,
-)
+): java.io.Serializable
 data class PatientLookupResponse(val data: PatientLookupData? = null, val message: String? = null)
 data class PatientLookupData(val patient: CasePatient? = null, @SerializedName("previous_cases") val previousCases: List<CaseSummary> = emptyList())
 data class TreatmentRequest(val diagnosis: String, val treatment: String, val prevention: String? = null, val referral: String? = null)

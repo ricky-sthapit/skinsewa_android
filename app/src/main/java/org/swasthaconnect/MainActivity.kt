@@ -45,6 +45,7 @@ import androidx.compose.material.icons.outlined.GroupAdd
 import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
@@ -75,6 +76,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -132,7 +134,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Page { SPLASH, LOGIN, REGISTER, FORGOT_PASSWORD, HOME, RESOURCES, RESOURCE_ADMIN, CASES, USERS, INVITATIONS, SETTINGS }
+private enum class Page { SPLASH, LOGIN, REGISTER, FORGOT_PASSWORD, HOME, RESOURCES, RESOURCE_ADMIN, CASES, REPORTS, USERS, INVITATIONS, SETTINGS }
 
 @Composable
 private fun SkinSewaApp(app: SkinSewaApplication) {
@@ -151,7 +153,9 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
     var dashboardMetrics by remember { mutableStateOf<DashboardMetrics?>(null) }
     var dashboardLoading by remember { mutableStateOf(false) }
     var dashboardError by remember { mutableStateOf<String?>(null) }
+    var reportCaseId by rememberSaveable { mutableStateOf<Long?>(null) }
     val scope = rememberCoroutineScope()
+    val pageStateHolder = rememberSaveableStateHolder()
     val context = LocalContext.current
 
     fun loadResources(pageToLoad: Int = 1) {
@@ -477,8 +481,31 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
                     }
                 },
             )
-            Page.CASES -> user?.let { account ->
-                CasesScreen(api = app.authApi, user = account, onBack = { page = Page.HOME.name })
+            Page.CASES -> pageStateHolder.SaveableStateProvider(Page.CASES.name) {
+                user?.let { account ->
+                    CasesScreen(
+                        api = app.authApi,
+                        user = account,
+                        initialCaseId = reportCaseId,
+                        onBack = {
+                            if (reportCaseId != null) {
+                                reportCaseId = null
+                                page = Page.REPORTS.name
+                            } else page = Page.HOME.name
+                        },
+                    )
+                }
+            }
+            Page.REPORTS -> if (user?.hasAdminAccess == true) {
+                pageStateHolder.SaveableStateProvider(Page.REPORTS.name) {
+                    ReportsScreen(
+                        api = app.authApi,
+                        onBack = { page = Page.HOME.name },
+                        onOpenCase = { id -> reportCaseId = id; page = Page.CASES.name },
+                    )
+                }
+            } else {
+                ComingSoonPage(title = "Reports", onBack = { page = Page.HOME.name })
             }
             Page.INVITATIONS -> if (user?.hasAdminAccess == true) {
                 InvitationsScreen(api = app.authApi, onBack = { page = Page.HOME.name })
@@ -867,6 +894,10 @@ private fun HomePage(
                         NavigationDrawerItem(
                             label = { Text("Invitations") }, icon = { Icon(Icons.Outlined.GroupAdd, contentDescription = null) },
                             selected = false, onClick = { scope.launch { drawerState.close(); onNavigate(Page.INVITATIONS) } }, modifier = Modifier.padding(start = 28.dp, end = 12.dp),
+                        )
+                        NavigationDrawerItem(
+                            label = { Text("Reports") }, icon = { Icon(Icons.Outlined.Assessment, contentDescription = null) },
+                            selected = false, onClick = { scope.launch { drawerState.close(); onNavigate(Page.REPORTS) } }, modifier = Modifier.padding(start = 28.dp, end = 12.dp),
                         )
                         NavigationDrawerItem(
                             label = { Text("Manage resources") }, icon = { Icon(Icons.Outlined.PictureAsPdf, contentDescription = null) },
