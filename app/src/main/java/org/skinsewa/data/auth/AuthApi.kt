@@ -1,4 +1,4 @@
-package org.swasthaconnect.data.auth
+package org.skinsewa.data.auth
 
 import com.google.gson.annotations.SerializedName
 import okhttp3.OkHttpClient
@@ -12,11 +12,13 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.HTTP
 import retrofit2.http.Multipart
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.POST
 import retrofit2.http.PartMap
+import retrofit2.http.PATCH
 import retrofit2.http.Query
 import retrofit2.http.Streaming
 
@@ -35,6 +37,12 @@ interface AuthApi {
 
     @POST("auth/logout")
     suspend fun logout(): Response<MessageResponse>
+
+    @POST("device-tokens")
+    suspend fun registerDeviceToken(@Body request: DeviceTokenRequest): Response<MessageResponse>
+
+    @HTTP(method = "DELETE", path = "device-tokens", hasBody = true)
+    suspend fun unregisterDeviceToken(@Body request: DeviceTokenRequest): Response<MessageResponse>
 
     @GET("resources")
     suspend fun resources(@Query("page") page: Int = 1, @Query("per_page") perPage: Int = 25): Response<ResourceListResponse>
@@ -63,6 +71,20 @@ interface AuthApi {
 
     @GET("admin/dashboard")
     suspend fun adminDashboard(): Response<AdminDashboardResponse>
+
+    @GET("admin/users")
+    suspend fun adminUsers(
+        @Query("q") query: String? = null,
+        @Query("user_type") userType: String? = null,
+        @Query("page") page: Int = 1,
+        @Query("per_page") perPage: Int = 15,
+    ): Response<AdminUserListResponse>
+
+    @PATCH("admin/users/{id}")
+    suspend fun updateAdminUser(@Path("id") id: Long, @Body request: AdminUserUpdateRequest): Response<AdminUserMutationResponse>
+
+    @DELETE("admin/users/{id}")
+    suspend fun deactivateAdminUser(@Path("id") id: Long): Response<MessageResponse>
 
     @GET("admin/reports")
     suspend fun adminCaseReports(
@@ -180,6 +202,7 @@ data class AuthData(
 data class UserResponse(val data: UserData? = null, val message: String? = null)
 data class UserData(val user: User? = null)
 data class MessageResponse(val message: String? = null)
+data class DeviceTokenRequest(val token: String, val platform: String = "android")
 data class InvitationRequest(
     val email: String,
     @SerializedName("user_type") val userType: String,
@@ -217,6 +240,34 @@ data class AdminDashboardData(
     @SerializedName("cases_by_status") val casesByStatus: List<CaseStatusCount> = emptyList(),
 )
 data class CaseStatusCount(val status: String, val total: Int)
+data class AdminUserListResponse(val data: List<AdminUser> = emptyList(), val meta: ResourcePage? = null)
+data class AdminUserMutationResponse(val message: String? = null, val data: AdminUser? = null)
+data class AdminUserUpdateRequest(
+    @SerializedName("first_name") val firstName: String,
+    @SerializedName("last_name") val lastName: String,
+    val email: String,
+    @SerializedName("user_type") val userType: String,
+    @SerializedName("is_admin") val isAdmin: Boolean,
+    val phone: String? = null,
+    @SerializedName("facility_name") val facilityName: String? = null,
+    val specialty: String? = null,
+)
+data class AdminUser(
+    val id: Long,
+    @SerializedName("first_name") val firstName: String,
+    @SerializedName("last_name") val lastName: String,
+    val name: String,
+    val email: String,
+    val role: String,
+    @SerializedName("user_type") val userType: String,
+    @SerializedName("is_admin") val isAdmin: Boolean = false,
+    val roles: List<String> = emptyList(),
+    @SerializedName("role_label") val roleLabel: String = "Care team",
+    val phone: String? = null,
+    @SerializedName("facility_name") val facilityName: String? = null,
+    val specialty: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
+)
 data class AdminCaseReportsResponse(val data: AdminCaseReportData? = null, val message: String? = null)
 data class AdminCaseReportData(
     val month: String,

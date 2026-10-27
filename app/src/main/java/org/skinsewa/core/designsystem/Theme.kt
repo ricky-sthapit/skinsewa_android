@@ -1,4 +1,4 @@
-package org.swasthaconnect.core.designsystem
+package org.skinsewa.core.designsystem
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme

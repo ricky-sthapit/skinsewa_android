@@ -1,4 +1,4 @@
-package org.swasthaconnect
+package org.skinsewa
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -53,9 +53,9 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import org.swasthaconnect.data.auth.AuthApi
-import org.swasthaconnect.data.auth.Invitation
-import org.swasthaconnect.data.auth.InvitationRequest
+import org.skinsewa.data.auth.AuthApi
+import org.skinsewa.data.auth.Invitation
+import org.skinsewa.data.auth.InvitationRequest
 import java.io.IOException
 
 @Composable

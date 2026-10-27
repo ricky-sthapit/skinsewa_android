@@ -1,17 +1,18 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.google.services)
 }
 
 val apiBaseUrl = providers.gradleProperty("TELEDERM_API_BASE_URL")
     .orElse(providers.environmentVariable("TELEDERM_API_BASE_URL"))
 
 android {
-    namespace = "org.swasthaconnect"
+    namespace = "org.skinsewa"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "org.swasthaconnect"
+        applicationId = "org.skinsewa"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
@@ -26,7 +27,6 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
         }
         release {
@@ -55,6 +55,8 @@ android {
 }
 
 dependencies {
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
     implementation(platform(libs.compose.bom))
     androidTestImplementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

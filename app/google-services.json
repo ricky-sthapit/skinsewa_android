@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "250035477847",
+    "project_id": "swasthaconnect-b9a84",
+    "storage_bucket": "swasthaconnect-b9a84.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:250035477847:android:b503c4f0d873c405fdb212",
+        "android_client_info": {
+          "package_name": "org.skinsewa"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAohxPLvnefnXn9zMQcneaL-vOvKt9gpGQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,11 +1,17 @@
-package org.swasthaconnect
+package org.skinsewa
 
+import android.Manifest
 import android.os.Bundle
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -101,23 +107,26 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MultipartBody
 import org.json.JSONObject
-import org.swasthaconnect.core.designsystem.SkinSewaTheme
-import org.swasthaconnect.core.designsystem.ThemeChoice
-import org.swasthaconnect.data.auth.AuthResponse
-import org.swasthaconnect.data.auth.ForgotPasswordRequest
-import org.swasthaconnect.data.auth.LoginRequest
-import org.swasthaconnect.data.auth.RegistrationRequest
-import org.swasthaconnect.data.auth.User
-import org.swasthaconnect.data.auth.EducationalResource
+import org.skinsewa.core.designsystem.SkinSewaTheme
+import org.skinsewa.core.designsystem.ThemeChoice
+import org.skinsewa.data.auth.AuthResponse
+import org.skinsewa.data.auth.ForgotPasswordRequest
+import org.skinsewa.data.auth.LoginRequest
+import org.skinsewa.data.auth.RegistrationRequest
+import org.skinsewa.data.auth.User
+import org.skinsewa.data.auth.EducationalResource
 import java.io.IOException
 import java.io.File
 import androidx.core.view.WindowCompat
 
 class MainActivity : ComponentActivity() {
+    private var notificationCaseId by mutableStateOf<Long?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        notificationCaseId = caseIdFromIntent(intent)
         val app = application as SkinSewaApplication
         setContent {
             val themeChoice by app.themePreferences.choice.collectAsState(initial = ThemeChoice.LIGHT)
@@ -128,16 +137,36 @@ class MainActivity : ComponentActivity() {
                         isAppearanceLightNavigationBars = themeChoice == ThemeChoice.LIGHT
                     }
                 }
-                SkinSewaApp(app = app)
+                SkinSewaApp(app = app, notificationCaseId = notificationCaseId, onNotificationCaseOpened = { notificationCaseId = null })
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        notificationCaseId = caseIdFromIntent(intent)
+    }
+
+    private fun caseIdFromIntent(intent: Intent?): Long? {
+        val value = intent?.extras?.get(EXTRA_NOTIFICATION_CASE_ID)
+        return when (value) {
+            is Long -> value.takeIf { it > 0 }
+            is Int -> value.toLong().takeIf { it > 0 }
+            is String -> value.toLongOrNull()?.takeIf { it > 0 }
+            else -> null
+        }
+    }
+
+    companion object {
+        const val EXTRA_NOTIFICATION_CASE_ID = "case_id"
     }
 }
 
 private enum class Page { SPLASH, LOGIN, REGISTER, FORGOT_PASSWORD, HOME, RESOURCES, RESOURCE_ADMIN, CASES, REPORTS, USERS, INVITATIONS, SETTINGS }
 
 @Composable
-private fun SkinSewaApp(app: SkinSewaApplication) {
+private fun SkinSewaApp(app: SkinSewaApplication, notificationCaseId: Long?, onNotificationCaseOpened: () -> Unit) {
     var page by rememberSaveable { mutableStateOf(Page.SPLASH.name) }
     var user by remember { mutableStateOf<User?>(null) }
     var loginError by remember { mutableStateOf<String?>(null) }
@@ -157,6 +186,7 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
     val scope = rememberCoroutineScope()
     val pageStateHolder = rememberSaveableStateHolder()
     val context = LocalContext.current
+    val requestNotificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     fun loadResources(pageToLoad: Int = 1) {
         scope.launch {
@@ -251,6 +281,12 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
 
     LaunchedEffect(user?.id) {
         val signedInUser = user ?: return@LaunchedEffect
+        app.syncFcmToken()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         val expiresAt = app.tokenStore.expiresAtMillis() ?: return@LaunchedEffect
         val remainingMillis = expiresAt - System.currentTimeMillis()
         if (remainingMillis > 0) delay(remainingMillis)
@@ -260,6 +296,14 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
             loginError = "Your session expired after one hour. Sign in again to continue."
             page = Page.LOGIN.name
         }
+    }
+
+    LaunchedEffect(notificationCaseId, user?.id) {
+        val caseId = notificationCaseId ?: return@LaunchedEffect
+        if (user == null) return@LaunchedEffect
+        reportCaseId = caseId
+        page = Page.CASES.name
+        onNotificationCaseOpened()
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -379,6 +423,7 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
                 onRefreshMetrics = { user?.let(::loadDashboardMetrics) },
                 onSignOut = {
                     scope.launch {
+                        app.unregisterCurrentFcmToken()
                         runCatching { app.authApi.logout() }
                         app.tokenStore.clear()
                         user = null
@@ -512,7 +557,11 @@ private fun SkinSewaApp(app: SkinSewaApplication) {
             } else {
                 ComingSoonPage(title = "Invitations", onBack = { page = Page.HOME.name })
             }
-            Page.USERS -> ComingSoonPage(title = "Users", onBack = { page = Page.HOME.name })
+            Page.USERS -> if (user?.hasAdminAccess == true) {
+                user?.let { account -> UsersScreen(api = app.authApi, currentUser = account, onBack = { page = Page.HOME.name }) }
+            } else {
+                ComingSoonPage(title = "Users", onBack = { page = Page.HOME.name })
+            }
             Page.SETTINGS -> SettingsPage(
                 onBack = { page = Page.HOME.name },
                 selected = app.themePreferences.choice.collectAsState(initial = ThemeChoice.LIGHT).value,

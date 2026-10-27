@@ -1,4 +1,4 @@
-package org.swasthaconnect
+package org.skinsewa
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,7 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import org.swasthaconnect.data.auth.EducationalResource
+import org.skinsewa.data.auth.EducationalResource
 import java.util.Locale
 
 @Composable

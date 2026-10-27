@@ -1,4 +1,4 @@
-package org.swasthaconnect
+package org.skinsewa
 
 import android.content.Context
 import android.graphics.BitmapFactory
@@ -41,6 +41,7 @@ import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.ZoomIn
 import androidx.compose.material.icons.outlined.ZoomOut
 import androidx.compose.material3.Button
@@ -56,6 +57,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -67,6 +70,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,8 +82,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.CancellationException
@@ -93,16 +103,16 @@ import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
 import okio.source
-import org.swasthaconnect.data.auth.CaseDetail
-import org.swasthaconnect.data.auth.CaseMessage
-import org.swasthaconnect.data.auth.CasePhoto
-import org.swasthaconnect.data.auth.CaseSummary
-import org.swasthaconnect.data.auth.CaseTreatment
-import org.swasthaconnect.data.auth.CaseUser
-import org.swasthaconnect.data.auth.PlaceOption
-import org.swasthaconnect.data.auth.TreatmentRequest
-import org.swasthaconnect.data.auth.User
-import org.swasthaconnect.data.auth.AuthApi
+import org.skinsewa.data.auth.CaseDetail
+import org.skinsewa.data.auth.CaseMessage
+import org.skinsewa.data.auth.CasePhoto
+import org.skinsewa.data.auth.CaseSummary
+import org.skinsewa.data.auth.CaseTreatment
+import org.skinsewa.data.auth.CaseUser
+import org.skinsewa.data.auth.PlaceOption
+import org.skinsewa.data.auth.TreatmentRequest
+import org.skinsewa.data.auth.User
+import org.skinsewa.data.auth.AuthApi
 import java.io.IOException
 
 private enum class CaseView { LIST, CREATE, DETAIL }
@@ -148,6 +158,7 @@ private fun CaseListScreen(
     onSelect: (Long) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     val cases = remember { mutableStateListOf<CaseSummary>() }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -160,8 +171,9 @@ private fun CaseListScreen(
     var total by remember { mutableStateOf(0) }
 
     fun load(page: Int = 1, append: Boolean = false) {
+        if (loading) return
+        loading = true
         scope.launch {
-            loading = true
             error = null
             try {
                 val response = api.cases(query = appliedSearch.takeIf(String::isNotBlank), status = selectedStatus.takeIf(String::isNotBlank), page = page, perPage = 15)
@@ -185,20 +197,47 @@ private fun CaseListScreen(
 
     LaunchedEffect(selectedStatus, appliedSearch) { load() }
 
-    CasePageFrame(title = "Cases", onBack = onBack, actions = {
+    CasePageFrame(title = "Cases", onBack = onBack, snackbarHostState = snackbarHostState, onBottomOverscroll = {
+        if (!loading) {
+            if (currentPage < lastPage) load(currentPage + 1, append = true)
+            else if (cases.isNotEmpty()) scope.launch { snackbarHostState.showSnackbar("No more cases") }
+        }
+    }, actions = {
         IconButton(onClick = { load() }, enabled = !loading) { Icon(Icons.Outlined.Refresh, contentDescription = "Refresh cases") }
         if (user.clinicalRole == "MEDICAL_OFFICER") {
             IconButton(onClick = onCreate) { Icon(Icons.Outlined.Add, contentDescription = "Add patient case") }
         }
     }) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("$total ${if (total == 1) "case" else "cases"}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(caseRoleDescription(user), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("$total ${if (total == 1) "case" else "cases"}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(caseRoleDescription(user), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(search, { search = it }, Modifier.weight(1f), label = { Text("Search patient or case") }, singleLine = true)
-            TextButton(onClick = { appliedSearch = search.trim() }) { Text("Search") }
-        }
+        OutlinedTextField(
+            value = search,
+            onValueChange = { search = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Search patient or case #") },
+            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+            trailingIcon = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (search.isNotBlank()) {
+                        IconButton(onClick = {
+                            search = ""
+                            appliedSearch = ""
+                        }) {
+                            Icon(Icons.Outlined.Close, contentDescription = "Clear search")
+                        }
+                    }
+                    IconButton(onClick = { appliedSearch = search.trim() }, enabled = !loading) {
+                        Icon(Icons.Outlined.Search, contentDescription = "Search cases", tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { appliedSearch = search.trim() }),
+        )
         CaseStringDropdownField(
             label = "Status",
             value = if (selectedStatus.isBlank()) "All statuses" else selectedStatus.caseStatusLabel(),
@@ -209,8 +248,8 @@ private fun CaseListScreen(
         if (loading && cases.isEmpty()) Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         if (!loading && error == null && cases.isEmpty()) CaseNotice("No cases found for this account.")
         cases.forEach { item -> CaseListCard(item, onClick = { onSelect(item.id) }) }
-        if (currentPage < lastPage) OutlinedButton(onClick = { load(currentPage + 1, append = true) }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
-            if (loading) CircularProgressIndicator(Modifier.size(18.dp)) else Text("Load more cases")
+        if (loading && cases.isNotEmpty()) Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
         }
     }
 }
@@ -250,7 +289,7 @@ private fun CaseCreateScreen(api: AuthApi, user: User, onBack: () -> Unit, onCre
     var error by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var patientCode by rememberSaveable { mutableStateOf("") }
-    var selectedPatient by remember { mutableStateOf<org.swasthaconnect.data.auth.CasePatient?>(null) }
+    var selectedPatient by remember { mutableStateOf<org.skinsewa.data.auth.CasePatient?>(null) }
     var previousCases by remember { mutableStateOf(emptyList<CaseSummary>()) }
     var followUpId by rememberSaveable { mutableStateOf<Long?>(null) }
     var provinces by remember { mutableStateOf(emptyList<PlaceOption>()) }
@@ -575,14 +614,51 @@ private fun CaseDetailScreen(api: AuthApi, caseId: Long, refreshKey: Int, onBack
 }
 
 @Composable
-private fun CasePageFrame(title: String, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit, content: @Composable ColumnScope.() -> Unit) {
+private fun CasePageFrame(
+    title: String,
+    onBack: () -> Unit,
+    actions: @Composable RowScope.() -> Unit,
+    snackbarHostState: SnackbarHostState? = null,
+    onBottomOverscroll: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val scrollState = rememberScrollState()
+    val latestOnBottomOverscroll by rememberUpdatedState(onBottomOverscroll)
+    var bottomOverscrollHandled by remember { mutableStateOf(false) }
+    val bottomOverscrollConnection = remember(scrollState, onBottomOverscroll != null) {
+        object : NestedScrollConnection {
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (onBottomOverscroll != null && available.y < -0.5f && scrollState.value >= scrollState.maxValue) {
+                    if (!bottomOverscrollHandled) {
+                        bottomOverscrollHandled = true
+                        latestOnBottomOverscroll?.invoke()
+                    }
+                } else if (available.y > 0.5f) {
+                    bottomOverscrollHandled = false
+                }
+                return Offset.Zero
+            }
+        }
+    }
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back") }
             Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Row(content = actions)
         }
-        Column(Modifier.widthIn(max = 900.dp).fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+        Box(Modifier.widthIn(max = 900.dp).fillMaxWidth().weight(1f)) {
+            Column(
+                Modifier.fillMaxSize()
+                    .nestedScroll(bottomOverscrollConnection)
+                    .verticalScroll(scrollState)
+                    .padding(bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = content,
+            )
+            snackbarHostState?.let { hostState ->
+                SnackbarHost(hostState, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
+            }
+        }
     }
 }
 

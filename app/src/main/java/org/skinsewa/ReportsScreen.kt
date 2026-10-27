@@ -1,4 +1,4 @@
-package org.swasthaconnect
+package org.skinsewa
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -22,7 +22,9 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForwardIos
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.outlined.ArrowBackIosNew
+import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -56,11 +58,12 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import org.swasthaconnect.data.auth.AdminCaseReportData
-import org.swasthaconnect.data.auth.AuthApi
-import org.swasthaconnect.data.auth.PlaceOption
-import org.swasthaconnect.data.auth.ReportCase
-import org.swasthaconnect.data.auth.ReportDermatologist
+import org.skinsewa.data.auth.AdminCaseReportData
+import org.skinsewa.data.auth.AuthApi
+import org.skinsewa.data.auth.PlaceOption
+import org.skinsewa.data.auth.ReportCase
+import org.skinsewa.data.auth.ReportDermatologist
+import org.skinsewa.data.auth.ReportLocation
 import java.io.IOException
 import java.util.Calendar
 
@@ -71,8 +74,11 @@ fun ReportsScreen(api: AuthApi, onBack: () -> Unit, onOpenCase: (Long) -> Unit) 
     val scope = rememberCoroutineScope()
     val reportCases = remember { mutableStateListOf<ReportCase>() }
     var report by remember { mutableStateOf<AdminCaseReportData?>(null) }
+    var districtBreakdown by remember { mutableStateOf(emptyList<ReportLocation>()) }
+    var loadingDistrictBreakdown by remember { mutableStateOf(false) }
     var month by rememberSaveable { mutableStateOf(currentReportMonth()) }
     var tab by rememberSaveable { mutableStateOf(ReportTab.CASES) }
+    var showLocationFilterPage by rememberSaveable { mutableStateOf(false) }
     var provinces by remember { mutableStateOf(emptyList<PlaceOption>()) }
     var districts by remember { mutableStateOf(emptyList<PlaceOption>()) }
     var municipalities by remember { mutableStateOf(emptyList<PlaceOption>()) }
@@ -120,6 +126,32 @@ fun ReportsScreen(api: AuthApi, onBack: () -> Unit, onOpenCase: (Long) -> Unit) 
                 error = failure.message ?: "Couldn't load reports. Check your connection and try again."
             } finally {
                 loading = false
+            }
+        }
+    }
+
+    fun loadDistrictBreakdown() {
+        scope.launch {
+            loadingDistrictBreakdown = true
+            try {
+                val response = api.adminCaseReports(
+                    month = month,
+                    provinceId = province?.id,
+                    districtId = null,
+                    municipalityId = null,
+                    query = null,
+                    dermatologistId = null,
+                    page = 1,
+                    perPage = 5,
+                )
+                if (!response.isSuccessful) throw IOException(response.errorBody()?.string()?.let(::reportServerMessage) ?: "Couldn't load districts.")
+                districtBreakdown = response.body()?.data?.locations.orEmpty().sortedBy { it.name.lowercase() }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                error = failure.message ?: "Couldn't load districts. Check your connection and try again."
+            } finally {
+                loadingDistrictBreakdown = false
             }
         }
     }
@@ -183,15 +215,24 @@ fun ReportsScreen(api: AuthApi, onBack: () -> Unit, onOpenCase: (Long) -> Unit) 
         loadReports()
     }
 
+    LaunchedEffect(month, province?.id, tab, showLocationFilterPage) {
+        if (tab == ReportTab.LOCATIONS && !showLocationFilterPage) loadDistrictBreakdown()
+    }
+
     val currentMonth = currentReportMonth()
     Column(
         modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 14.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back") }
-            Text("Reports", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            IconButton(onClick = { loadReports() }, enabled = !loading) { Icon(Icons.Outlined.Refresh, contentDescription = "Refresh reports") }
+            IconButton(onClick = { if (showLocationFilterPage) showLocationFilterPage = false else onBack() }) {
+                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = if (showLocationFilterPage) "Back to reports" else "Back")
+            }
+            Text(if (showLocationFilterPage) "Filter by location" else "Reports", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            if (!showLocationFilterPage) {
+                IconButton(onClick = { showLocationFilterPage = true }) { Icon(Icons.Outlined.FilterList, contentDescription = "Filter by location") }
+                IconButton(onClick = { loadReports() }, enabled = !loading) { Icon(Icons.Outlined.Refresh, contentDescription = "Refresh reports") }
+            }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { month = shiftReportMonth(month, -1) }) { Icon(Icons.Outlined.ArrowBackIosNew, contentDescription = "Previous month") }
@@ -200,39 +241,61 @@ fun ReportsScreen(api: AuthApi, onBack: () -> Unit, onOpenCase: (Long) -> Unit) 
                 Icon(Icons.AutoMirrored.Outlined.ArrowForwardIos, contentDescription = "Next month")
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            ReportPlaceDropdown("Province", province?.name, provinces, !loadingPlaces) { chosen ->
-                province = chosen
-                district = null
-                municipality = null
-                selectedDoctor = null
-            }
-            ReportPlaceDropdown("District", district?.name, districts, !loadingPlaces) { chosen ->
-                district = chosen
-                municipality = null
-                selectedDoctor = null
-            }
-            ReportPlaceDropdown("Municipality / local level", municipality?.name, municipalities, !loadingPlaces && district != null) { chosen ->
-                municipality = chosen
-                selectedDoctor = null
-            }
-        }
-        PrimaryTabRow(selectedTabIndex = tab.ordinal) {
-            Tab(selected = tab == ReportTab.CASES, onClick = { tab = ReportTab.CASES }, text = { Text("Cases") })
-            Tab(selected = tab == ReportTab.LOCATIONS, onClick = { tab = ReportTab.LOCATIONS }, text = { Text("Locations") })
-            Tab(selected = tab == ReportTab.DERMATOLOGISTS, onClick = { tab = ReportTab.DERMATOLOGISTS }, text = { Text("Dermatologists") })
-        }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         if (loading && report == null) {
             CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally).padding(18.dp))
         } else {
             report?.let { data ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    ReportMetric("Cases created", data.summary.totalCases, Modifier.weight(1f))
-                    ReportMetric("Completed", data.summary.completedCases, Modifier.weight(1f))
-                    ReportMetric("Districts", data.summary.districtsReported, Modifier.weight(1f)) { tab = ReportTab.LOCATIONS }
-                }
-                when (tab) {
+                if (showLocationFilterPage) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Choose a province, district, or local level to narrow this month's report.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            ReportPlaceDropdown("Province", province?.name, provinces, !loadingPlaces) { chosen ->
+                                province = chosen
+                                district = null
+                                municipality = null
+                                selectedDoctor = null
+                            }
+                            ReportPlaceDropdown("District", district?.name, districts, !loadingPlaces) { chosen ->
+                                district = chosen
+                                municipality = null
+                                selectedDoctor = null
+                            }
+                            ReportPlaceDropdown("Municipality / local level", municipality?.name, municipalities, !loadingPlaces && district != null) { chosen ->
+                                municipality = chosen
+                                selectedDoctor = null
+                            }
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            TextButton(
+                                onClick = {
+                                    province = null
+                                    district = null
+                                    municipality = null
+                                    selectedDoctor = null
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) { Text("Clear filters") }
+                            Button(onClick = { showLocationFilterPage = false }, modifier = Modifier.weight(1f)) { Text("Done") }
+                        }
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        ReportMetric("Cases created", data.summary.totalCases, Modifier.weight(1f))
+                        ReportMetric("Completed", data.summary.completedCases, Modifier.weight(1f))
+                        ReportMetric("Districts", data.summary.districtsReported, Modifier.weight(1f)) { tab = ReportTab.LOCATIONS }
+                    }
+                    PrimaryTabRow(selectedTabIndex = tab.ordinal) {
+                        Tab(selected = tab == ReportTab.CASES, onClick = { tab = ReportTab.CASES }, text = { Text("Cases") })
+                        Tab(selected = tab == ReportTab.LOCATIONS, onClick = { tab = ReportTab.LOCATIONS }, text = { Text("Locations") })
+                        Tab(selected = tab == ReportTab.DERMATOLOGISTS, onClick = { tab = ReportTab.DERMATOLOGISTS }, text = { Text("Doctors", maxLines = 1, softWrap = false) })
+                    }
+                    when (tab) {
                     ReportTab.CASES -> {
                         if (selectedDoctor != null) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -244,12 +307,17 @@ fun ReportsScreen(api: AuthApi, onBack: () -> Unit, onOpenCase: (Long) -> Unit) 
                             value = search,
                             onValueChange = { search = it },
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Search patient or case number") },
+                            placeholder = { Text("Patient name or case #") },
+                            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                            trailingIcon = {
+                                IconButton(onClick = { appliedSearch = search.trim() }, enabled = !loading) {
+                                    Icon(Icons.Outlined.Search, contentDescription = "Search cases")
+                                }
+                            },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(onSearch = { appliedSearch = search.trim() }),
                         )
-                        Button(onClick = { appliedSearch = search.trim() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { Text("Apply case search") }
                         if (loading && reportCases.isEmpty()) {
                             CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally).padding(12.dp))
                         } else if (reportCases.isEmpty()) {
@@ -262,30 +330,6 @@ fun ReportsScreen(api: AuthApi, onBack: () -> Unit, onOpenCase: (Long) -> Unit) 
                                         if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Load more cases")
                                     }
                                 }
-                            }
-                        }
-                    }
-                    ReportTab.LOCATIONS -> {
-                        val items = data.locations
-                        if (items.isEmpty()) Text("No location breakdown is available.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            items(items, key = { "${it.id}-${it.name}" }) { item ->
-                                ReportBreakdownCard(
-                                    title = item.name,
-                                    subtitle = listOfNotNull(item.district, item.province).distinct().joinToString(" · ").ifBlank { "Cases reported" },
-                                    count = item.totalCases,
-                                    onClick = {
-                                        val isMunicipality = district != null
-                                        if (isMunicipality) municipality = item.id?.let { id -> PlaceOption(id, item.name, type = "Municipality", parent = district?.id) }
-                                        else {
-                                            province = item.provinceId?.let { id -> provinces.firstOrNull { it.id == id } }
-                                            district = item.id?.let { id -> PlaceOption(id, item.name, type = "District", parent = item.provinceId) }
-                                            municipality = null
-                                        }
-                                        selectedDoctor = null
-                                        tab = ReportTab.CASES
-                                    },
-                                )
                             }
                         }
                     }
@@ -303,6 +347,29 @@ fun ReportsScreen(api: AuthApi, onBack: () -> Unit, onOpenCase: (Long) -> Unit) 
                             }
                         }
                     }
+                    ReportTab.LOCATIONS -> {
+                        if (loadingDistrictBreakdown && districtBreakdown.isEmpty()) {
+                            CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally).padding(16.dp))
+                        } else if (districtBreakdown.isEmpty()) {
+                            Text("No districts reported cases this month.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            items(districtBreakdown, key = { "${it.id}-${it.name}" }) { item ->
+                                ReportBreakdownCard(
+                                    title = item.name,
+                                    subtitle = item.province ?: "Cases reported this month",
+                                    count = item.totalCases,
+                                    onClick = {
+                                        province = item.provinceId?.let { id -> provinces.firstOrNull { it.id == id } }
+                                        district = item.id?.let { id -> PlaceOption(id, item.name, type = "District", parent = item.provinceId) }
+                                        municipality = null
+                                        selectedDoctor = null
+                                        tab = ReportTab.CASES
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
                 }
             }
         }

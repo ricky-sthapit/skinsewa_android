@@ -1,4 +1,4 @@
-package org.swasthaconnect.data.auth
+package org.skinsewa.data.auth
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties

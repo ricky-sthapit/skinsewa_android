@@ -1,4 +1,4 @@
-package org.swasthaconnect.core.designsystem
+package org.skinsewa.core.designsystem
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
